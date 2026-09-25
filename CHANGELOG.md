@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/sinameraji/autopilot/compare/v1.1.0...v1.2.0) (2026-09-25)
+
+
+### Features
+
+* **docs:** redesign site for Autopilot ([#651](https://github.com/sinameraji/autopilot/issues/651)) ([62f7388](https://github.com/sinameraji/autopilot/commit/62f738837cf1974ca39ac1e60e715a72c7e0b754))
+
 ## [1.1.0](https://github.com/sinameraji/autopilot/compare/v1.0.0...v1.1.0) (2026-09-25)
 
 
