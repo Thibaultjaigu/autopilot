@@ -143,7 +143,7 @@ autopilot -p "..." -m openai/gpt-4o-mini
 ```
 
 - The key can also live in `~/.config/kimiflare/config.json` as `requestyApiKey` (the env var wins).
-- `REQUESTY_BASE_URL` picks a region, e.g. `https://router.eu.requesty.ai/v1` for the EU.
+- `REQUESTY_BASE_URL` picks a region, e.g. `https://router.eu.requesty.ai/v1` for the EU. Only https URLs on Requesty's hosts (`router.requesty.ai`, `router.eu.requesty.ai`, `router.us.requesty.ai`, `router.ap.requesty.ai`) are accepted, so the key is never sent anywhere else.
 - `/model` lists Requesty's managed policies first (short ids such as `kimi-k2.6` or
   `claude-sonnet-4-5`), then its full `vendor/model` catalog. Both kinds of id work.
 - Defaults on Requesty: `kimi-k2.6` for the main model, `deepseek-v4-flash` for side calls, and

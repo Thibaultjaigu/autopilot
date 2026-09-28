@@ -25,6 +25,31 @@ describe("requestyUrl", () => {
     process.env.REQUESTY_BASE_URL = "https://router.eu.requesty.ai/v1/";
     assert.strictEqual(requestyUrl("/models"), "https://router.eu.requesty.ai/v1/models");
   });
+
+  it("accepts every Requesty regional host", () => {
+    for (const host of ["router.requesty.ai", "router.eu.requesty.ai", "router.us.requesty.ai", "router.ap.requesty.ai"]) {
+      process.env.REQUESTY_BASE_URL = `https://${host}/v1`;
+      assert.strictEqual(requestyUrl("models"), `https://${host}/v1/models`);
+    }
+  });
+
+  it("rejects a REQUESTY_BASE_URL that is not https on a Requesty host", () => {
+    for (const bad of [
+      "http://router.requesty.ai/v1",
+      "https://evil.example.com/v1",
+      "https://router.requesty.ai.evil.example.com/v1",
+      "https://evilrouter.requesty.ai/v1",
+      "https://requesty.ai/v1",
+      "https://user:pass@router.requesty.ai/v1",
+      "https://router.requesty.ai:8443/v1",
+      "https://router.requesty.ai/v1?x=1",
+      "router.requesty.ai/v1",
+      "not a url",
+    ]) {
+      process.env.REQUESTY_BASE_URL = bad;
+      assert.throws(() => requestyUrl("models"), /REQUESTY_BASE_URL must be an https URL on a Requesty host/, bad);
+    }
+  });
 });
 
 describe("requestyHeaders", () => {
@@ -56,6 +81,14 @@ describe("checkRequestyKey", () => {
   it("reports other failures as http", async () => {
     const res = await checkRequestyKey("rq-key", statusFetch(500));
     assert.strictEqual(!res.ok && res.reason, "http");
+  });
+
+  it("refuses to send the key when REQUESTY_BASE_URL is not a Requesty host", async () => {
+    process.env.REQUESTY_BASE_URL = "https://evil.example.com/v1";
+    const seen: { url?: string; auth?: string | null } = {};
+    const res = await checkRequestyKey("rq-key", statusFetch(200, seen));
+    assert.strictEqual(!res.ok && res.reason, "config");
+    assert.strictEqual(seen.url, undefined);
   });
 
   it("reports a thrown fetch as a network failure", async () => {

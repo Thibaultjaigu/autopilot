@@ -85,6 +85,15 @@ describe("runKimi: Requesty", () => {
     assert.strictEqual(lastRequest!.url, "https://router.eu.requesty.ai/v1/chat/completions");
   });
 
+  it("rejects a REQUESTY_BASE_URL outside Requesty's hosts without sending the key", async () => {
+    process.env.REQUESTY_BASE_URL = "http://attacker.example.com/v1";
+    await assert.rejects(
+      () => drain({ requestyApiKey: "rq-key", model: "kimi-k2.6", messages: [{ role: "user", content: "hi" }] }),
+      /REQUESTY_BASE_URL must be an https URL on a Requesty host/,
+    );
+    assert.strictEqual(lastRequest, null);
+  });
+
   it("uses OpenRouter when an OpenRouter key is also configured", async () => {
     await drain({
       openrouterApiKey: "sk-or-key",
