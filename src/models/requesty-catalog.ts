@@ -20,7 +20,7 @@ import { fetchWithNetworkRetry } from "./openrouter.js";
 import { requestyUrl } from "./requesty.js";
 
 /** Bump when the cached shape changes, so an old cache is refetched. */
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 
 /** Default: refetch after 6 hours; always fall back to a stale cache on fetch failure. */
 export const DEFAULT_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -54,6 +54,17 @@ export interface RequestyCatalog {
 function catalogCachePath(): string {
   const xdg = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
   return join(xdg, "kimiflare", "requesty-models.json");
+}
+
+/**
+ * Catalog ids end up in the terminal (model picker, status line), so an id
+ * with a control character (C0, DEL or C1, which covers ANSI/OSC escape
+ * sequences) is never registered, whether it comes from the API or the cache.
+ */
+const CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f]/;
+
+export function isSafeModelId(id: unknown): id is string {
+  return typeof id === "string" && id.length > 0 && !CONTROL_CHARS.test(id);
 }
 
 /** Requesty prices per token as a number; we store USD/Mtok. */
@@ -90,7 +101,7 @@ async function fetchModels(fetchImpl: typeof fetch, path: string): Promise<Reque
     throw new Error(`Requesty /${path} returned HTTP ${res.status}`);
   }
   const body = (await res.json()) as RequestyModelsResponse;
-  return (body.data ?? []).filter((m) => !m.api || m.api === "chat");
+  return (body.data ?? []).filter((m) => isSafeModelId(m?.id) && (!m.api || m.api === "chat"));
 }
 
 /**
@@ -124,7 +135,12 @@ async function readCache(): Promise<CacheFile | null> {
   try {
     const raw = await readFile(catalogCachePath(), "utf8");
     const parsed = JSON.parse(raw) as CacheFile;
-    return parsed.version === CACHE_VERSION ? parsed : null;
+    if (parsed.version !== CACHE_VERSION) return null;
+    return {
+      ...parsed,
+      models: (parsed.models ?? []).filter((m) => isSafeModelId(m?.id)),
+      featured: (parsed.featured ?? []).filter(isSafeModelId),
+    };
   } catch {
     return null;
   }

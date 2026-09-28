@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -8,6 +8,7 @@ import {
   fetchRequestyCatalog,
   loadRequestyCatalog,
   ensureRequestyCatalog,
+  isSafeModelId,
   type RequestyRawModel,
 } from "./requesty-catalog.js";
 import { featuredModels, getModel, registerRequestyModels } from "./registry.js";
@@ -64,6 +65,17 @@ describe("mapRequestyModel: pure mapping from the Requesty API shape", () => {
   });
 });
 
+describe("isSafeModelId", () => {
+  it("accepts normal Requesty ids and rejects control characters", () => {
+    for (const ok of ["openai/gpt-4o-mini", "kimi-k2.6", "gpt-5-mini@eu", "anthropic/claude-sonnet-4-5:thinking"]) {
+      assert.ok(isSafeModelId(ok), ok);
+    }
+    for (const bad of ["a\x1b[0mb", "a\nb", "a\tb", "a\x7f", "a\u0085b", "a\u009db", "", 42, null, undefined]) {
+      assert.ok(!isSafeModelId(bad), JSON.stringify(bad));
+    }
+  });
+});
+
 describe("Requesty catalog I/O", () => {
   let dir: string;
   let prevXdg: string | undefined;
@@ -100,6 +112,23 @@ describe("Requesty catalog I/O", () => {
       assert.ok(seen.includes("https://router.requesty.ai/v1/models"));
     });
 
+    it("skips entries whose id contains control characters (ANSI/OSC escapes)", async () => {
+      const malicious: RequestyRawModel[] = [
+        { id: "openai/gpt-4o\x1b[2J\x1b[31mpwned", api: "chat" },
+        { id: "evil\x1b]8;;https://evil.example.com\x07link\x1b]8;;\x07", api: "chat" },
+        { id: "c1\u009b31m", api: "chat" },
+        { id: "nul\x00id", api: "chat" },
+        { id: "del\x7fid", api: "chat" },
+        { id: "", api: "chat" },
+      ];
+      const catalog = await fetchRequestyCatalog(routedFetch([malicious[0]!, ...MANAGED], [...malicious, SAMPLE]));
+      assert.deepStrictEqual(
+        catalog.models.map((m) => m.id),
+        ["kimi-k2.6", "gpt-5-mini@eu", "openai/gpt-4o-mini"],
+      );
+      assert.deepStrictEqual(catalog.featured, ["kimi-k2.6"]);
+    });
+
     it("still returns the other list when one endpoint fails", async () => {
       const onlyFull = await fetchRequestyCatalog(routedFetch(null, [SAMPLE]));
       assert.deepStrictEqual(onlyFull.models.map((m) => m.id), ["openai/gpt-4o-mini"]);
@@ -123,6 +152,21 @@ describe("Requesty catalog I/O", () => {
       const stale = await loadRequestyCatalog({ ttlMs: 0, fetchImpl: failingFetch });
       assert.strictEqual(stale.models.length, 3);
       assert.deepStrictEqual(stale.featured, ["kimi-k2.6"]);
+    });
+
+    it("drops ids with control characters from a cached catalog too", async () => {
+      await mkdir(join(dir, "kimiflare"), { recursive: true });
+      const bad = "evil\x1b]0;owned\x07";
+      const cache = {
+        version: 2,
+        fetchedAt: new Date().toISOString(),
+        models: [mapRequestyModel({ id: bad }), mapRequestyModel(SAMPLE)],
+        featured: [bad, "openai/gpt-4o-mini"],
+      };
+      await writeFile(join(dir, "kimiflare", "requesty-models.json"), JSON.stringify(cache), "utf8");
+      const loaded = await loadRequestyCatalog({ fetchImpl: failingFetch });
+      assert.deepStrictEqual(loaded.models.map((m) => m.id), ["openai/gpt-4o-mini"]);
+      assert.deepStrictEqual(loaded.featured, ["openai/gpt-4o-mini"]);
     });
   });
 
